@@ -1,0 +1,219 @@
+######
+#Este código obtém os dados de inflação de inflação (IPCA e IGPM) no Sistema de Recupeção Automática 
+#(SIDRA) do IBGE e do Sistema de Séries Temporais do Séries Temporais do Banco Central para construir séries
+#de variações de índices de preços e de índices de preços.
+
+# Os gráficos são feitos em plotly
+
+### Pacotes usados
+if(!require(rjson)){install.packages("rjson")}
+require(rjson)
+
+if(!require(htmltools)){install.packages("htmltools")}
+library(htmltools)
+
+if(!require(plotly)){install.packages("plotly")}
+require(plotly)
+
+if(!require(timetk)){install.packages("timetk")}
+require(timetk)
+
+if(!require(sidrar)){install.packages("sidrar")}
+require(sidrar)
+
+if(!require(readxl)){install.packages("readxl")}
+library("readxl")
+
+if (!require("dplyr")) install.packages("dplyr")
+library(dplyr)
+if (!require("ggplot2")) install.packages("ggplot2")
+library(ggplot2)
+
+if (!require("rbcb")) install.packages("rbcb")
+library(rbcb)
+
+### Função de apoio
+#Transforma variação mensal em um índice cuja base é igual a 100
+varparaindice = function(variacao){
+  indice = variacao
+  indice[1] = 100
+  n = length(variacao)
+  for (i in 2:n){
+    indice[i] = indice[i-1]*(1+variacao[i]/100)
+  }
+  return(indice)
+}
+# IPCA GERAL
+# Obter os dados do IPCA GERAL (variação mensal) - Tabela 1737 do SIDRA
+# A tabela 1737 contém o IPCA mensal por grupos e subitens desde 1979
+IPCAGERAL <- sidrar::get_sidra(
+  api = "/t/1737/n1/all/v/63/p/all/d/v63%202" # v63 é a variação mensal
+)
+
+# Filtrar os dados para o índice geral (nível "Brasil" e "Índice geral")
+IPCAGERAL <- IPCAGERAL %>%
+  filter(`Nível Territorial` == "Brasil",
+         `Variável` == "IPCA - Variação mensal") %>%
+  mutate(Data = as.Date(paste0(`Mês (Código)`, "01"), format = "%Y%m%d")) %>%
+  select(Data, Valor) %>%
+  filter(Data >= as.Date("1995-12-01"))
+
+IPCAGeralI = ts(varparaindice(IPCAGERAL[,2]), start = c(1995, 12), frequency = 12)
+head(IPCAGeralI)
+tail(IPCAGeralI)
+length(IPCAGeralI)
+
+#IGPM
+# Obter a série do IGP-M (variação mensal) - Código 189 no SGS do Banco Central
+IGPM <- get_series(code = 189, start_date = "1995-12-01")
+
+# Renomear as colunas para facilitar (opcional)
+IGPM <- IGPM %>%
+  rename(Data = date, Valor = `189`) %>%
+  mutate(Data = as.Date(Data))
+
+head(IGPM)
+IGPM = ts(IGPM[,2], start = c(1995, 12), frequency = 12)
+
+#importante controlar a data
+IGPM = window(IGPM, start = c(1995,12))
+IGPMI = varparaindice(IGPM)
+plot(IGPMI)
+length(IGPMI)
+head(IGPMI)
+tail(IGPMI)
+head(IGPM)
+tail(IGPM)
+
+#### Criação do Conjunto de Índices
+(n.ipca = length(IPCAGeralI))
+(n.igpm = length(IGPMI))
+
+if (n.igpm > n.ipca) {IGPMI = IGPMI[1:n.igpm-1]}
+
+seriesprecos = data.frame(ts(cbind(IPCAGeralI, IGPMI), 
+                             start = start(IPCAGeralI),
+                             frequency = frequency(IPCAGeralI)))
+head(seriesprecos)
+
+indice = tk_index(IPCAGeralI, timetk_idx = FALSE, silent = FALSE)
+
+indice1 = seq(as.Date("1995/12/01"), by = "month", length.out = nrow(seriesprecos))
+
+seriesprecos = data.frame(ts(cbind(IPCAGeralI,
+                                   IPCAAEI,
+                                   IPCAEEI, ipcagasI,
+                                   IPCALivresI,
+                                   IPCAMonitI,
+                                   IGPMI), 
+  start = start(IPCAGeralI),
+  frequency = frequency(IPCAGeralI)))
+  indice = tk_index(IPCAGeralI, timetk_idx = FALSE, silent = FALSE)
+  
+length(indice)
+nrow(seriesprecos)
+head(seriesprecos)
+tail(seriesprecos)
+#seriesprecos = seriesprecos[-336, ]
+tail(seriesprecos)
+seriesprecos$indice = indice1
+
+write.csv2(seriesprecos, "seriesprecos.csv")
+
+
+
+#### Criação do Conjunto de Variação
+seriesvariacoes = data.frame(ts(cbind(IPCAGeral, IPCAAE, IPCAEE, ipcagas, IPCALivres, IPCAMonit, IGPM), 
+                             start = start(IPCAGeral),
+                             frequency = frequency(IPCAGeral)))
+head(seriesvariacoes)
+
+indice = tk_index(IPCAGeral, timetk_idx = FALSE, silent = FALSE)
+
+indice = seq(as.Date("1995/12/01"), by = "month", length.out = nrow(seriesvariacoes))
+head(indice)
+tail(indice)
+
+seriesvariacoes = data.frame(ts(cbind(IPCAGeral,
+                                      IPCAAE,
+                                      IPCAEE, ipcagas,
+                                      IPCALivres,
+                                      IPCAMonit,
+                                      IGPM), 
+                             start = start(IPCAGeral),
+                             frequency = frequency(IPCAGeral)))
+indice = tk_index(IPCAGeral, timetk_idx = FALSE, silent = FALSE)
+
+length(indice)
+nrow(seriesvariacoes)
+head(seriesvariacoes)
+tail(seriesvariacoes)
+#seriesprecos = seriesprecos[-336, ]
+tail(seriesvariacoes)
+#seriesvariacoes$indice = indice
+write.csv2(seriesvariacoes, "seriesvariacoes.csv")
+
+##### Figurass
+fig <- plot_ly(x = ~indice, 
+               y = ~IPCAGeralI, mode = 'lines', type = 'scatter',
+               data = seriesprecos, name = "IPCA Geral")
+fig <- fig %>% add_trace(y = ~IPCAAEI, name = 'IPCA Água e Esgoto', mode = 'lines') 
+fig <- fig %>% add_trace(y = ~IPCAEEI, name = 'IPCA Eletricidade', mode = 'lines') 
+fig <- fig %>% add_trace(y = ~ipcagasI, name = 'IPCA Gás Encanado', mode = 'lines') 
+fig <- fig %>% add_trace(y = ~IPCALivresI, name = 'IPCA Livres', mode = 'lines') 
+fig <- fig %>% add_trace(y = ~IPCAMonitI, name = 'IPCA Monitorados', mode = 'lines') 
+fig <- fig %>% add_trace(y = ~IGPMI, name = 'IGP-M', mode = 'lines') 
+x <- list(
+  title = ""
+)
+y <- list(
+  title = "Índices"
+)
+fig <- fig %>% layout(xaxis = x, yaxis = y)
+fig <- fig %>% layout(legend = list(orientation = 'h'))
+fig
+
+fig <- plot_ly(x = ~indice, 
+               y = ~IPCAGeralI, mode = 'lines', type = 'scatter',
+               data = seriesprecos, name = "General")
+fig <- fig %>% add_trace(y = ~IPCAAEI, name = 'Water and sanitation', mode = 'lines') 
+fig <- fig %>% add_trace(y = ~IPCAEEI, name = 'Electricity', mode = 'lines') 
+fig <- fig %>% add_trace(y = ~ipcagasI, name = 'Piped gas', mode = 'lines') 
+fig <- fig %>% add_trace(y = ~IPCALivresI, name = 'Free', mode = 'lines') 
+fig <- fig %>% add_trace(y = ~IPCAMonitI, name = 'Regulated', mode = 'lines') 
+fig <- fig %>% add_trace(y = ~IGPMI, name = 'IGP-M', mode = 'lines') 
+fig <- fig %>% layout(legend = list(orientation = 'h'))
+x <- list(
+  title = ""
+)
+y <- list(
+  title = "Indexes"
+)
+fig <- fig %>% layout(xaxis = x, yaxis = y)
+fig
+
+### Espanhol
+
+fig <- plot_ly(x = ~indice, 
+               y = ~IPCAGeralI, mode = 'lines', type = 'scatter',
+               data = seriesprecos, name = "General")
+fig <- fig %>% add_trace(y = ~IPCAAEI, name = 'Agua y sanitización', mode = 'lines') 
+fig <- fig %>% add_trace(y = ~IPCAEEI, name = 'Eletricidad', mode = 'lines') 
+fig <- fig %>% add_trace(y = ~ipcagasI, name = 'Gas canalizado', mode = 'lines') 
+fig <- fig %>% add_trace(y = ~IPCALivresI, name = 'Libres', mode = 'lines') 
+fig <- fig %>% add_trace(y = ~IPCAMonitI, name = 'Regulados', mode = 'lines') 
+fig <- fig %>% add_trace(y = ~IGPMI, name = 'IGP-M', mode = 'lines') 
+fig <- fig %>% layout(legend = list(orientation = 'h'))
+x <- list(
+  title = ""
+)
+y <- list(
+  title = "Indexes"
+)
+fig <- fig %>% layout(xaxis = x, yaxis = y)
+fig
+
+series = merge(IPCAGeralI, IPCAAEI)
+
+write.csv(seriesprecos, "seriesprecos.csv")
+tail(seriesprecos)
