@@ -6,12 +6,6 @@
 # Os gráficos são feitos em plotly
 
 ### Pacotes usados
-if(!require(rjson)){install.packages("rjson")}
-require(rjson)
-
-if(!require(htmltools)){install.packages("htmltools")}
-library(htmltools)
-
 if(!require(plotly)){install.packages("plotly")}
 require(plotly)
 
@@ -20,14 +14,6 @@ require(timetk)
 
 if(!require(sidrar)){install.packages("sidrar")}
 require(sidrar)
-
-if(!require(readxl)){install.packages("readxl")}
-library("readxl")
-
-if (!require("dplyr")) install.packages("dplyr")
-library(dplyr)
-if (!require("ggplot2")) install.packages("ggplot2")
-library(ggplot2)
 
 if (!require("rbcb")) install.packages("rbcb")
 library(rbcb)
@@ -43,47 +29,37 @@ varparaindice = function(variacao){
   }
   return(indice)
 }
+
 # IPCA GERAL
 # Obter os dados do IPCA GERAL (variação mensal) - Tabela 1737 do SIDRA
 # A tabela 1737 contém o IPCA mensal por grupos e subitens desde 1979
-IPCAGERAL <- sidrar::get_sidra(
+IPCAGeral <- sidrar::get_sidra(
   api = "/t/1737/n1/all/v/63/p/all/d/v63%202" # v63 é a variação mensal
 )
 
 # Filtrar os dados para o índice geral (nível "Brasil" e "Índice geral")
-IPCAGERAL <- IPCAGERAL %>%
+IPCAGeral <- IPCAGeral %>%
   filter(`Nível Territorial` == "Brasil",
          `Variável` == "IPCA - Variação mensal") %>%
   mutate(Data = as.Date(paste0(`Mês (Código)`, "01"), format = "%Y%m%d")) %>%
   select(Data, Valor) %>%
   filter(Data >= as.Date("1995-12-01"))
 
-IPCAGeralI = ts(varparaindice(IPCAGERAL[,2]), start = c(1995, 12), frequency = 12)
+IPCAGeral = ts(IPCAGeral[,2], start = c(1995, 12), frequency = 12)
+IPCAGeralI = varparaindice(IPCAGeral)
 head(IPCAGeralI)
 tail(IPCAGeralI)
-length(IPCAGeralI)
+
+head(IPCAGeral)
+tail(IPCAGeral)
 
 #IGPM
 # Obter a série do IGP-M (variação mensal) - Código 189 no SGS do Banco Central
-IGPM <- get_series(code = 189, start_date = "1995-12-01")
-
-# Renomear as colunas para facilitar (opcional)
-IGPM <- IGPM %>%
-  rename(Data = date, Valor = `189`) %>%
-  mutate(Data = as.Date(Data))
-
-head(IGPM)
-IGPM = ts(IGPM[,2], start = c(1995, 12), frequency = 12)
+IGPM <- get_series(code = 189, start_date = "1995-12-01", as = "ts")
 
 #importante controlar a data
 IGPM = window(IGPM, start = c(1995,12))
 IGPMI = varparaindice(IGPM)
-plot(IGPMI)
-length(IGPMI)
-head(IGPMI)
-tail(IGPMI)
-head(IGPM)
-tail(IGPM)
 
 #### Criação do Conjunto de Índices
 (n.ipca = length(IPCAGeralI))
@@ -91,68 +67,39 @@ tail(IGPM)
 
 if (n.igpm > n.ipca) {IGPMI = IGPMI[1:n.igpm-1]}
 
-seriesprecos = data.frame(ts(cbind(IPCAGeralI, IGPMI), 
-                             start = start(IPCAGeralI),
-                             frequency = frequency(IPCAGeralI)))
-head(seriesprecos)
-
-indice = seq(as.Date("1995/12/01"), by = "month", length.out = nrow(seriesprecos))
-
-seriesprecos = data.frame(ts(cbind(IPCAGeralI,
-                                   IGPMI), 
-  start = start(IPCAGeralI),
-  frequency = frequency(IPCAGeralI)))
-  indice = tk_index(IPCAGeralI, timetk_idx = FALSE, silent = FALSE)
-  
-length(indice)
-nrow(seriesprecos)
-head(seriesprecos)
-tail(seriesprecos)
-#seriesprecos = seriesprecos[-336, ]
-tail(seriesprecos)
+seriesprecos = data.frame(cbind(IPCAGeralI,
+                                   IGPMI))
+indice = tk_index(IPCAGeralI, timetk_idx = FALSE, silent = FALSE)
 seriesprecos$indice = indice
+head(seriesprecos)
 
-#Salvando as séries em um arquivo CSV com valores separados por ponto e vírgula
-write.csv2(seriesprecos, "seriesprecos.csv")
+names(seriesprecos) = c("IPCAGeral", "IGPM", "Data")
+head(seriesprecos)
 
+#Salvando as variações em arquivo CSV com valores separados por ponto e vírgula 
+write.csv2(seriesprecos, "seriesvariacoes.csv")
 
-
+####################################################################
+####################################################################
+####################################################################
 #### Criação do Conjunto de Variação
-seriesvariacoes = data.frame(ts(cbind(IPCAGeral, IGPM), 
-                             start = start(IPCAGeral),
-                             frequency = frequency(IPCAGeral)))
-head(seriesvariacoes)
-
+seriesvariacoes = data.frame(cbind(IPCAGeral,
+                                      IGPM))
 indice = tk_index(IPCAGeral, timetk_idx = FALSE, silent = FALSE)
+seriesvariacoes$indice = indice
 
-indice = seq(as.Date("1995/12/01"), by = "month", length.out = nrow(seriesvariacoes))
-head(indice)
-tail(indice)
-
-seriesvariacoes = data.frame(ts(cbind(IPCAGeral,
-                                      IPCAAE,
-                                      IPCAEE, ipcagas,
-                                      IPCALivres,
-                                      IPCAMonit,
-                                      IGPM), 
-                             start = start(IPCAGeral),
-                             frequency = frequency(IPCAGeral)))
-indice = tk_index(IPCAGeral, timetk_idx = FALSE, silent = FALSE)
-
-length(indice)
-nrow(seriesvariacoes)
+names(seriesvariacoes) = c("IPCAGeral", "IGPM", "Data")
 head(seriesvariacoes)
-tail(seriesvariacoes)
-#seriesprecos = seriesprecos[-336, ]
-tail(seriesvariacoes)
-#seriesvariacoes$indice = indice
 
 #Salvando as variações em arquivo CSV com valores separados por ponto e vírgula 
 write.csv2(seriesvariacoes, "seriesvariacoes.csv")
+####################################################################
+####################################################################
+####################################################################
 
 ##### Confecção do gráfico com o plotly
-fig <- plot_ly(x = ~indice, 
-               y = ~IPCAGeralI, mode = 'lines', type = 'scatter',
+fig <- plot_ly(x = ~Data, 
+               y = ~IPCAGeral, mode = 'lines', type = 'scatter',
                data = seriesprecos, name = "IPCA Geral")
 fig <- fig %>% add_trace(y = ~IGPMI, name = 'IGP-M', mode = 'lines') 
 x <- list(
@@ -164,3 +111,18 @@ y <- list(
 fig <- fig %>% layout(xaxis = x, yaxis = y)
 fig <- fig %>% layout(legend = list(orientation = 'h'))
 fig
+
+##### Confecção do gráfico com o plotly
+fig1 <- plot_ly(x = ~indice, 
+               y = ~IPCAGeral, mode = 'lines', type = 'scatter',
+               data = seriesvariacoes, name = "IPCA Geral")
+fig1 <- fig1 %>% add_trace(y = ~IGPM, name = 'IGP-M', mode = 'lines') 
+x <- list(
+  title = ""
+)
+y <- list(
+  title = "Índices"
+)
+fig1 <- fig1 %>% layout(xaxis = x, yaxis = y)
+fig1 <- fig1 %>% layout(legend = list(orientation = 'h'))
+fig1
